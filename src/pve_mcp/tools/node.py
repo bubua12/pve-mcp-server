@@ -114,7 +114,7 @@ def register_node_tools(mcp: FastMCP) -> None:
             uptime=_int(status_data.get("uptime", 0)),
             cpu=_float(status_data.get("cpu", 0)),
             maxcpu=maxcpu,
-            mem=_int(status_data.get("mem", 0)),
+            mem=_int(status_data.get("mem", status_data.get("memory", 0))),
             maxmem=maxmem,
             disk=_int(rootfs.get("used", 0)),
             maxdisk=_int(rootfs.get("total", 0)),
