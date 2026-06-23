@@ -40,13 +40,82 @@
 
 ## 🚀 快速开始
 
-### 1. 创建 PVE API Token
+### 1. 创建 PVE API Token 并分配权限
 
-登录 PVE Web UI → **Datacenter** → **Permissions** → **API Tokens**：
+#### 1.1 创建 API Token
 
-- 用户：`monitor@pam`
+**方式一：Web UI**
+
+登录 PVE Web UI → **数据中心** → **权限** → **API Tokens** → **添加**：
+
+- 用户：`root@pam`（或新建专用用户如 `monitor@pam`）
 - Token ID：`mcp-token`
-- 权限：分配 `Sys.Audit`、`VM.Audit`、`VM.Monitor`、`Datastore.Audit` 角色
+- 勾选 **Privilege Separation**（推荐，Token 权限独立于用户）
+
+> ⚠️ 创建时会显示 Token Secret，**只显示一次**，请务必复制保存。
+
+**方式二：命令行**
+
+```bash
+# 创建用户（可选，也可以直接用 root@pam）
+pveum user add monitor@pam --comment "PVE MCP monitoring user"
+
+# 创建 Token（privsep=1 表示权限分离）
+pveum user token add root@pam mcp-token --privsep 1
+```
+
+#### 1.2 分配 Token 权限
+
+> **重要**：PVE 中 API Token 的权限与用户权限是**独立的**，给用户分配权限**不会**自动继承到 Token。必须显式给 Token 分配权限。
+
+**方式一：Web UI**
+
+1. **数据中心** → **权限** → **添加**
+2. **路径**：`/`（表示根路径，覆盖所有资源）
+3. **角色**：`PVEAuditor`（只读权限）
+4. **Token**：选择 `root@pam!mcp-token`（注意不是选择用户）
+5. 点击 **添加**
+
+**方式二：命令行（推荐）**
+
+```bash
+# 分配只读权限（推荐，最小权限原则）
+pveum acl modify / --roles PVEAuditor --tokens 'root@pam!mcp-token'
+```
+
+<details>
+<summary>其他常用角色（点击展开）</summary>
+
+```bash
+# 如果需要更多权限，可以使用以下角色：
+
+# VM 管理权限（启动/停止/重启 VM）
+pveum acl modify / --roles PVEVMAdmin --tokens 'root@pam!mcp-token'
+
+# 完整管理权限（谨慎使用）
+pveum acl modify / --roles PVEAdmin --tokens 'root@pam!mcp-token'
+
+# 或者组合多个精细权限
+pveum acl modify / --roles 'Sys.Audit,VM.Audit,VM.Monitor,Datastore.Audit' --tokens 'root@pam!mcp-token'
+```
+
+| 角色 | 权限说明 |
+|------|----------|
+| `PVEAuditor` | 只读：查看节点、VM、存储、任务等 |
+| `PVEVMAdmin` | VM 管理：创建/删除/启动/停止/快照 |
+| `PVEAdmin` | 全部管理权限（谨慎使用） |
+
+</details>
+
+#### 1.3 验证权限
+
+```bash
+# 查看 Token 列表
+pveum user token list root@pam
+
+# 查看当前权限配置
+pveum acl list
+```
 
 ### 2. 安装
 
@@ -145,6 +214,47 @@ pve-mcp-server/
 ├── pyproject.toml
 └── .env.example
 ```
+
+## ❓ 常见问题
+
+### Q: 提示 "权限不足" 或 "认证失败"
+
+```
+权限不足，请检查 API Token 的权限分配（需要 Sys.Audit, VM.Audit）
+```
+
+**原因**：PVE 中 API Token 权限与用户权限是独立的，创建 Token 后必须**单独给 Token 分配权限**。
+
+**解决**：
+
+```bash
+# 确认 Token 存在
+pveum user token list root@pam
+
+# 给 Token 分配权限（注意用 --tokens 而不是 --users）
+pveum acl modify / --roles PVEAuditor --tokens 'root@pam!mcp-token'
+
+# 验证权限已生效
+pveum acl list
+```
+
+### Q: 提示 "连接超时" 或 "SSL 错误"
+
+检查 `.env` 中的 `PVE_HOST` 是否正确，如果是自签名证书，设置 `PVE_VERIFY_SSL=false`。
+
+### Q: `pveum acl modify` 命令报 "invalid format"
+
+```bash
+# ❌ 错误：用户名末尾多了特殊字符
+pveum acl modify / --roles PVEAuditor --users root@pam~
+
+# ✅ 正确：确保没有多余字符
+pveum acl modify / --roles PVEAuditor --users root@pam
+```
+
+### Q: Web UI 中看不到 Token 选项
+
+权限添加界面中，**用户** 和 **Token** 是两个不同的下拉框。如果只看到用户选择，确认你创建的是 API Token 而不是 API Key。
 
 ## 🔒 安全说明
 

@@ -1,7 +1,12 @@
 """PVE 连接配置管理"""
 
+from pathlib import Path
+
 from pydantic import Field
 from pydantic_settings import BaseSettings
+
+# 项目根目录（src/pve_mcp/config.py → 上溯 2 级）
+_PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
 
 
 class PVEConfig(BaseSettings):
@@ -10,7 +15,11 @@ class PVEConfig(BaseSettings):
     优先级：环境变量 > .env 文件 > 默认值
     """
 
-    model_config = {"env_prefix": "PVE_"}
+    model_config = {
+        "env_prefix": "PVE_",
+        "env_file": str(_PROJECT_ROOT / ".env"),
+        "env_file_encoding": "utf-8",
+    }
 
     host: str = Field(
         description="PVE 主机地址，如 https://192.168.1.100:8006",

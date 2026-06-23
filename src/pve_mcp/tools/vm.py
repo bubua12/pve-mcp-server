@@ -7,6 +7,7 @@ import functools
 from typing import TYPE_CHECKING
 
 from loguru import logger
+from mcp.server.fastmcp import Context
 
 from pve_mcp.client.exceptions import PVEError, PVEAuthenticationError, PVEConnectionError
 from pve_mcp.client.models import VMInfo, VMDetail, DiskInfo, NICInfo, RRDSample
@@ -23,6 +24,7 @@ from pve_mcp.utils.validators import validate_vmid, validate_sort_by, validate_r
 if TYPE_CHECKING:
     from mcp.server.fastmcp import FastMCP
     from pve_mcp.client.base import PVEClient
+    from pve_mcp.server import AppState
 
 
 def _handle_error(func):
@@ -54,6 +56,11 @@ async def _resolve_node(client: PVEClient, config, node: str | None) -> str:
     return await client.detect_node()
 
 
+def _get_app_state(ctx: Context) -> AppState:
+    """从 Context 中获取 lifespan 注入的 AppState。"""
+    return ctx.request_context.lifespan_context
+
+
 def _parse_vm_info(vm: dict, node: str = "") -> VMInfo:
     """从 API 原始数据构造 VMInfo。"""
     return VMInfo(
@@ -76,7 +83,7 @@ def register_vm_tools(mcp: FastMCP) -> None:
 
     @mcp.tool()
     @_handle_error
-    async def list_vms(node: str | None = None) -> str:
+    async def list_vms(ctx: Context, node: str | None = None) -> str:
         """列出 PVE 上所有 QEMU 虚拟机及其运行状态。
 
         返回每台 VM 的 ID、名称、运行状态、CPU/内存/磁盘使用情况。
@@ -84,8 +91,9 @@ def register_vm_tools(mcp: FastMCP) -> None:
         Args:
             node: 节点名称（可选，单机模式下自动检测）
         """
-        client: PVEClient = mcp.state["pve_client"]
-        config = mcp.state["config"]
+        app = _get_app_state(ctx)
+        client: PVEClient = app.pve_client
+        config = app.config
         node = await _resolve_node(client, config, node)
 
         vms_data = await client.get(f"/nodes/{node}/qemu")
@@ -95,7 +103,7 @@ def register_vm_tools(mcp: FastMCP) -> None:
 
     @mcp.tool()
     @_handle_error
-    async def get_vm_detail(vmid: int, node: str | None = None) -> str:
+    async def get_vm_detail(ctx: Context, vmid: int, node: str | None = None) -> str:
         """获取单台虚拟机的详细配置与实时状态。
 
         返回 VM 的 CPU/内存/磁盘/网络配置、快照信息、实时资源使用等。
@@ -106,8 +114,9 @@ def register_vm_tools(mcp: FastMCP) -> None:
         """
         validate_vmid(vmid)
 
-        client: PVEClient = mcp.state["pve_client"]
-        config = mcp.state["config"]
+        app = _get_app_state(ctx)
+        client: PVEClient = app.pve_client
+        config = app.config
         node = await _resolve_node(client, config, node)
 
         # 并行获取配置、状态、快照
@@ -196,6 +205,7 @@ def register_vm_tools(mcp: FastMCP) -> None:
     @mcp.tool()
     @_handle_error
     async def get_top_vms(
+        ctx: Context,
         sort_by: str = "cpu",
         limit: int = 5,
         node: str | None = None,
@@ -211,8 +221,9 @@ def register_vm_tools(mcp: FastMCP) -> None:
         """
         validate_sort_by(sort_by)
 
-        client: PVEClient = mcp.state["pve_client"]
-        config = mcp.state["config"]
+        app = _get_app_state(ctx)
+        client: PVEClient = app.pve_client
+        config = app.config
         node = await _resolve_node(client, config, node)
 
         vms_data = await client.get(f"/nodes/{node}/qemu")
@@ -240,6 +251,7 @@ def register_vm_tools(mcp: FastMCP) -> None:
     @mcp.tool()
     @_handle_error
     async def get_rrd_data(
+        ctx: Context,
         timeframe: str = "day",
         cf: str = "AVERAGE",
         node: str | None = None,
@@ -255,8 +267,9 @@ def register_vm_tools(mcp: FastMCP) -> None:
         """
         validate_rrd_timeframe(timeframe)
 
-        client: PVEClient = mcp.state["pve_client"]
-        config = mcp.state["config"]
+        app = _get_app_state(ctx)
+        client: PVEClient = app.pve_client
+        config = app.config
         node = await _resolve_node(client, config, node)
 
         rrd = await client.get(

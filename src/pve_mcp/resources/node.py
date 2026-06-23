@@ -6,19 +6,25 @@ import json
 from typing import TYPE_CHECKING
 
 from loguru import logger
+from mcp.server.fastmcp import Context
 
 if TYPE_CHECKING:
     from mcp.server.fastmcp import FastMCP
     from pve_mcp.client.base import PVEClient
 
 
+def _get_pve_client(ctx: Context):
+    """从 Context 中获取 lifespan 注入的 PVEClient。"""
+    return ctx.request_context.lifespan_context.pve_client
+
+
 def register_node_resources(mcp: FastMCP) -> None:
     """注册节点相关资源到 MCP Server。"""
 
     @mcp.resource("pve://nodes")
-    async def get_nodes() -> str:
+    async def get_nodes(ctx: Context) -> str:
         """获取所有 PVE 节点列表及其基本状态。"""
-        client: PVEClient = mcp.state["pve_client"]
+        client: PVEClient = _get_pve_client(ctx)
         try:
             nodes = await client.get("/nodes")
             result = []
@@ -38,9 +44,9 @@ def register_node_resources(mcp: FastMCP) -> None:
             return json.dumps({"error": str(e)})
 
     @mcp.resource("pve://nodes/{node}/status")
-    async def get_node_status(node: str) -> str:
+    async def get_node_status(ctx: Context, node: str) -> str:
         """获取指定节点的详细状态数据。"""
-        client: PVEClient = mcp.state["pve_client"]
+        client: PVEClient = _get_pve_client(ctx)
         try:
             data = await client.get(f"/nodes/{node}/status")
             return json.dumps(data, ensure_ascii=False, indent=2, default=str)
@@ -49,9 +55,9 @@ def register_node_resources(mcp: FastMCP) -> None:
             return json.dumps({"error": str(e)})
 
     @mcp.resource("pve://nodes/{node}/storage")
-    async def get_node_storage(node: str) -> str:
+    async def get_node_storage(ctx: Context, node: str) -> str:
         """获取指定节点的存储池列表。"""
-        client: PVEClient = mcp.state["pve_client"]
+        client: PVEClient = _get_pve_client(ctx)
         try:
             data = await client.get(f"/nodes/{node}/storage")
             return json.dumps(data, ensure_ascii=False, indent=2, default=str)

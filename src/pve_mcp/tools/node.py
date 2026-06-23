@@ -6,6 +6,7 @@ import functools
 from typing import TYPE_CHECKING
 
 from loguru import logger
+from mcp.server.fastmcp import Context
 
 from pve_mcp.client.exceptions import PVEError
 from pve_mcp.client.models import NodeStatus, StorageInfo
@@ -22,6 +23,7 @@ from pve_mcp.utils.formatters import (
 if TYPE_CHECKING:
     from mcp.server.fastmcp import FastMCP
     from pve_mcp.client.base import PVEClient
+    from pve_mcp.server import AppState
 
 
 def _handle_error(func):
@@ -47,6 +49,11 @@ def _handle_error(func):
     return wrapper
 
 
+def _get_app_state(ctx: Context) -> AppState:
+    """从 Context 中获取 lifespan 注入的 AppState。"""
+    return ctx.request_context.lifespan_context
+
+
 async def _resolve_node(client: PVEClient, config, node: str | None) -> str:
     """解析节点名称：优先使用参数，其次配置，最后自动检测。"""
     if node:
@@ -61,7 +68,7 @@ def register_node_tools(mcp: FastMCP) -> None:
 
     @mcp.tool()
     @_handle_error
-    async def get_node_status(node: str | None = None) -> str:
+    async def get_node_status(ctx: Context, node: str | None = None) -> str:
         """获取 PVE 节点的实时状态，包括 CPU、内存、负载、磁盘使用等信息。
 
         返回节点的健康评估，标记各项指标是否处于正常/警告/危险状态。
@@ -69,8 +76,9 @@ def register_node_tools(mcp: FastMCP) -> None:
         Args:
             node: 节点名称（可选，单机模式下自动检测）
         """
-        client: PVEClient = mcp.state["pve_client"]
-        config = mcp.state["config"]
+        app = _get_app_state(ctx)
+        client: PVEClient = app.pve_client
+        config = app.config
         node = await _resolve_node(client, config, node)
 
         status_data = await client.get(f"/nodes/{node}/status")
@@ -95,18 +103,18 @@ def register_node_tools(mcp: FastMCP) -> None:
 
     @mcp.tool()
     @_handle_error
-    async def list_nodes() -> str:
+    async def list_nodes(ctx: Context) -> str:
         """列出 PVE 集群中所有节点的状态概览。
 
         返回每个节点的名称、状态、CPU 和内存使用率、运行时间。
         """
-        client: PVEClient = mcp.state["pve_client"]
+        client: PVEClient = _get_app_state(ctx).pve_client
         nodes = await client.get("/nodes")
         return format_node_list(nodes)
 
     @mcp.tool()
     @_handle_error
-    async def list_storage(node: str | None = None) -> str:
+    async def list_storage(ctx: Context, node: str | None = None) -> str:
         """列出 PVE 所有存储池及其容量使用情况。
 
         返回每个存储池的类型、总容量、已用空间、使用率、支持的内容类型。
@@ -114,8 +122,9 @@ def register_node_tools(mcp: FastMCP) -> None:
         Args:
             node: 节点名称（可选）
         """
-        client: PVEClient = mcp.state["pve_client"]
-        config = mcp.state["config"]
+        app = _get_app_state(ctx)
+        client: PVEClient = app.pve_client
+        config = app.config
         node = await _resolve_node(client, config, node)
 
         data = await client.get(f"/nodes/{node}/storage")
@@ -137,14 +146,15 @@ def register_node_tools(mcp: FastMCP) -> None:
 
     @mcp.tool()
     @_handle_error
-    async def analyze_resource_allocation(node: str | None = None) -> str:
+    async def analyze_resource_allocation(ctx: Context, node: str | None = None) -> str:
         """分析 PVE 的资源分配情况，检测超分配风险。
 
         对比物理资源与已分配资源，计算 CPU 和内存的超分配率，给出容量建议。
         适合判断是否还能创建新 VM。
         """
-        client: PVEClient = mcp.state["pve_client"]
-        config = mcp.state["config"]
+        app = _get_app_state(ctx)
+        client: PVEClient = app.pve_client
+        config = app.config
         node = await _resolve_node(client, config, node)
 
         status_data, qemu, lxc = await __import__("asyncio").gather(

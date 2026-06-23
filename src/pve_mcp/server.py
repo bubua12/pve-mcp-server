@@ -21,7 +21,7 @@ from pve_mcp.prompts.diagnostics import register_prompts
 
 @dataclass
 class AppState:
-    """MCP Server 运行时共享状态，通过 lifespan 注入到 mcp.state。"""
+    """MCP Server 运行时共享状态，通过 lifespan 注入到 Context.request_context.lifespan_context。"""
 
     pve_client: PVEClient
     config: PVEConfig
@@ -51,7 +51,6 @@ def create_server() -> FastMCP:
     """创建并配置 MCP Server。"""
     mcp = FastMCP(
         name="pve-monitor",
-        version="1.0.0",
         lifespan=app_lifespan,
         instructions=(
             "这是一个 PVE (Proxmox VE) 监控 MCP 服务。"
@@ -60,7 +59,7 @@ def create_server() -> FastMCP:
         ),
     )
 
-    # 将 mcp 实例注册到 tools/resources 时，它们通过 mcp.state 访问 PVE 客户端
+    # tools/resources 通过 ctx.request_context.lifespan_context 访问 PVE 客户端
     register_node_tools(mcp)
     register_vm_tools(mcp)
     register_node_resources(mcp)
