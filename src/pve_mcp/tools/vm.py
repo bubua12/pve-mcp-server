@@ -62,18 +62,18 @@ def _get_app_state(ctx: Context) -> AppState:
 
 
 def _parse_vm_info(vm: dict, node: str = "") -> VMInfo:
-    """从 API 原始数据构造 VMInfo。"""
+    """从 API 原始数据构造 VMInfo（PVE API 数值字段可能是字符串，需强制转换）。"""
     return VMInfo(
-        vmid=vm["vmid"],
+        vmid=int(vm["vmid"]),
         name=vm.get("name", f"vm-{vm['vmid']}"),
         status=vm.get("status", "unknown"),
-        cpu=vm.get("cpu", 0),
-        maxcpu=vm.get("maxcpu", 1),
-        mem=vm.get("mem", 0),
-        maxmem=vm.get("maxmem", 0),
-        disk=vm.get("disk", 0),
-        maxdisk=vm.get("maxdisk", 0),
-        uptime=vm.get("uptime", 0),
+        cpu=float(vm.get("cpu", 0)),
+        maxcpu=int(vm.get("maxcpu", 1)),
+        mem=int(vm.get("mem", 0)),
+        maxmem=int(vm.get("maxmem", 0)),
+        disk=int(vm.get("disk", 0)),
+        maxdisk=int(vm.get("maxdisk", 0)),
+        uptime=int(vm.get("uptime", 0)),
         node=node,
     )
 
@@ -177,7 +177,7 @@ def register_vm_tools(mcp: FastMCP) -> None:
             uptime=status_data.get("uptime", 0),
             cpu_cores=config_data.get("cores", 1),
             cpu_type=config_data.get("cpu", "host"),
-            memory=config_data.get("memory", 512) * 1024 * 1024,  # MB → bytes
+            memory=int(config_data.get("memory", 512)) * 1024 * 1024,  # MB → bytes
             disks=disks,
             nics=nics,
             cpu_usage=status_data.get("cpu", 0),
@@ -186,18 +186,24 @@ def register_vm_tools(mcp: FastMCP) -> None:
             description=config_data.get("description", ""),
         )
 
-        # 构造简要状态用于格式化
+        # 构造简要状态用于格式化（PVE API 返回的数值字段可能是字符串，需强制转换）
+        def _int(v, default=0):
+            return int(v) if v is not None else default
+
+        def _float(v, default=0.0):
+            return float(v) if v is not None else default
+
         vm_status = VMInfo(
             vmid=vmid,
             name=detail.name,
             status=status_data.get("status", "unknown"),
-            cpu=status_data.get("cpu", 0),
-            maxcpu=status_data.get("cpus", config_data.get("cores", 1)),
-            mem=status_data.get("mem", 0),
-            maxmem=status_data.get("maxmem", detail.memory),
-            disk=status_data.get("disk", 0),
-            maxdisk=status_data.get("maxdisk", 0),
-            uptime=status_data.get("uptime", 0),
+            cpu=_float(status_data.get("cpu", 0)),
+            maxcpu=_int(status_data.get("cpus", config_data.get("cores", 1)), 1),
+            mem=_int(status_data.get("mem", 0)),
+            maxmem=_int(status_data.get("maxmem", detail.memory)),
+            disk=_int(status_data.get("disk", 0)),
+            maxdisk=_int(status_data.get("maxdisk", 0)),
+            uptime=_int(status_data.get("uptime", 0)),
         )
 
         return format_vm_detail(node, detail, vm_status)
