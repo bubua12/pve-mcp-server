@@ -107,6 +107,12 @@ def register_node_tools(mcp: FastMCP) -> None:
                 break
 
         rootfs = status_data.get("rootfs", {}) or {}
+        # PVE /nodes/{node}/status 返回的 mem/memory 可能是 int 也可能是 dict
+        mem_raw = status_data.get("mem", status_data.get("memory", 0))
+        if isinstance(mem_raw, dict):
+            mem_used = _int(mem_raw.get("used", 0))
+        else:
+            mem_used = _int(mem_raw)
 
         status = NodeStatus(
             node=node,
@@ -114,7 +120,7 @@ def register_node_tools(mcp: FastMCP) -> None:
             uptime=_int(status_data.get("uptime", 0)),
             cpu=_float(status_data.get("cpu", 0)),
             maxcpu=maxcpu,
-            mem=_int(status_data.get("mem", status_data.get("memory", 0))),
+            mem=mem_used,
             maxmem=maxmem,
             disk=_int(rootfs.get("used", 0)),
             maxdisk=_int(rootfs.get("total", 0)),
