@@ -81,26 +81,41 @@ def register_node_tools(mcp: FastMCP) -> None:
         config = app.config
         node = await _resolve_node(client, config, node)
 
-        status_data = await client.get(f"/nodes/{node}/status")
-        version_data = await client.get("/version")
+        # /nodes/{node}/status 不含 maxcpu/maxmem，需从 /nodes 补充
+        nodes_data, status_data, version_data = await __import__("asyncio").gather(
+            client.get("/nodes"),
+            client.get(f"/nodes/{node}/status"),
+            client.get("/version"),
+        )
 
-        # PVE API 返回的数值字段可能是字符串，需强制转换
         def _int(v, default=0):
             return int(v) if v is not None else default
 
         def _float(v, default=0.0):
             return float(v) if v is not None else default
 
+        # 从节点列表取硬件信息
+        maxcpu = 0
+        maxmem = 0
+        node_status_str = status_data.get("status", "unknown")
+        for n in nodes_data:
+            if n.get("node") == node:
+                maxcpu = _int(n.get("maxcpu", 0))
+                maxmem = _int(n.get("maxmem", 0))
+                if node_status_str == "unknown":
+                    node_status_str = n.get("status", "unknown")
+                break
+
         rootfs = status_data.get("rootfs", {}) or {}
 
         status = NodeStatus(
             node=node,
-            status=status_data.get("status", "unknown"),
+            status=node_status_str,
             uptime=_int(status_data.get("uptime", 0)),
             cpu=_float(status_data.get("cpu", 0)),
-            maxcpu=_int(status_data.get("maxcpu", 0)),
+            maxcpu=maxcpu,
             mem=_int(status_data.get("mem", 0)),
-            maxmem=_int(status_data.get("maxmem", 0)),
+            maxmem=maxmem,
             disk=_int(rootfs.get("used", 0)),
             maxdisk=_int(rootfs.get("total", 0)),
             loadavg=[float(x) for x in status_data.get("loadavg", [])],
@@ -141,9 +156,9 @@ def register_node_tools(mcp: FastMCP) -> None:
             StorageInfo(
                 storage=s.get("storage", ""),
                 type=s.get("type", ""),
-                total=s.get("total", 0),
-                used=s.get("used", 0),
-                available=s.get("avail", 0),
+                total=int(s.get("total", 0)),
+                used=int(s.get("used", 0)),
+                available=int(s.get("avail", 0)),
                 content=s.get("content", ""),
                 enabled=s.get("enabled", True),
                 active=s.get("active", True),
@@ -197,7 +212,8 @@ def register_node_tools(mcp: FastMCP) -> None:
         stopped_vms = 0
 
         for vm in qemu:
-            vm_vcpu = int(vm.get("maxcpu", 0))
+            # /nodes/{node}/qemu 列表返回 cpus，不是 maxcpu
+            vm_vcpu = int(vm.get("cpus", vm.get("maxcpu", 0)))
             vm_mem = int(vm.get("maxmem", 0))
             allocated_vcpu += vm_vcpu
             allocated_mem += vm_mem
