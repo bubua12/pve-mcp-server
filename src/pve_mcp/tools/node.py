@@ -84,19 +84,28 @@ def register_node_tools(mcp: FastMCP) -> None:
         status_data = await client.get(f"/nodes/{node}/status")
         version_data = await client.get("/version")
 
+        # PVE API 返回的数值字段可能是字符串，需强制转换
+        def _int(v, default=0):
+            return int(v) if v is not None else default
+
+        def _float(v, default=0.0):
+            return float(v) if v is not None else default
+
+        rootfs = status_data.get("rootfs", {}) or {}
+
         status = NodeStatus(
             node=node,
             status=status_data.get("status", "unknown"),
-            uptime=status_data.get("uptime", 0),
-            cpu=status_data.get("cpu", 0),
-            maxcpu=status_data.get("maxcpu", 0),
-            mem=status_data.get("mem", 0),
-            maxmem=status_data.get("maxmem", 0),
-            disk=status_data.get("rootfs", {}).get("used", 0),
-            maxdisk=status_data.get("rootfs", {}).get("total", 0),
-            loadavg=status_data.get("loadavg", []),
-            kversion=status_data.get("kversion", ""),
-            pve_version=version_data.get("version", ""),
+            uptime=_int(status_data.get("uptime", 0)),
+            cpu=_float(status_data.get("cpu", 0)),
+            maxcpu=_int(status_data.get("maxcpu", 0)),
+            mem=_int(status_data.get("mem", 0)),
+            maxmem=_int(status_data.get("maxmem", 0)),
+            disk=_int(rootfs.get("used", 0)),
+            maxdisk=_int(rootfs.get("total", 0)),
+            loadavg=[float(x) for x in status_data.get("loadavg", [])],
+            kversion=str(status_data.get("kversion", "")),
+            pve_version=str(version_data.get("version", "")),
         )
 
         return format_node_status(status)
