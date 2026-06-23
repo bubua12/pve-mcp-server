@@ -157,14 +157,29 @@ def register_node_tools(mcp: FastMCP) -> None:
         config = app.config
         node = await _resolve_node(client, config, node)
 
-        status_data, qemu, lxc = await __import__("asyncio").gather(
-            client.get(f"/nodes/{node}/status"),
+        # 同时获取节点信息（含物理资源）和 VM 列表
+        nodes, qemu, lxc = await __import__("asyncio").gather(
+            client.get("/nodes"),
             client.get(f"/nodes/{node}/qemu"),
             client.get(f"/nodes/{node}/lxc"),
         )
 
-        physical_cpu = status_data.get("maxcpu", 0)
-        physical_mem = status_data.get("maxmem", 0)
+        # 从节点列表中匹配当前节点，获取物理资源（更可靠）
+        physical_cpu = 0
+        physical_mem = 0
+        for n in nodes:
+            if n.get("node") == node:
+                physical_cpu = int(n.get("maxcpu", 0))
+                physical_mem = int(n.get("maxmem", 0))
+                break
+
+        # 如果节点列表里没取到，回退到 status 接口
+        if not physical_cpu or not physical_mem:
+            status_data = await client.get(f"/nodes/{node}/status")
+            if not physical_cpu:
+                physical_cpu = int(status_data.get("maxcpu", 0))
+            if not physical_mem:
+                physical_mem = int(status_data.get("maxmem", 0))
 
         allocated_vcpu = 0
         allocated_mem = 0
@@ -173,8 +188,8 @@ def register_node_tools(mcp: FastMCP) -> None:
         stopped_vms = 0
 
         for vm in qemu:
-            vm_vcpu = vm.get("maxcpu", 0)
-            vm_mem = vm.get("maxmem", 0)
+            vm_vcpu = int(vm.get("maxcpu", 0))
+            vm_mem = int(vm.get("maxmem", 0))
             allocated_vcpu += vm_vcpu
             allocated_mem += vm_mem
             if vm.get("status") == "running":
